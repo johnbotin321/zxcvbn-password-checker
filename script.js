@@ -27,6 +27,39 @@ document.addEventListener('DOMContentLoaded', () => {
         4: { color: 'var(--strength-4)', label: 'Very Strong', width: '100%' }
     };
 
+    // Calculate actual strength score based on zxcvbn score and crack time
+    function calculateActualStrength(result) {
+        let zxcvbnScore = result.score;
+        const crackTimeSeconds = result.crack_times_seconds.offline_fast_hashing_1e10_per_second;
+
+        let strengthScoreBasedOnTime = 0; // Default to Very Weak
+
+        // Define crack time thresholds in seconds for clear comparison
+        const ONE_MINUTE_SECONDS = 60;
+        const ONE_HOUR_SECONDS = 3600;
+        const ONE_MONTH_SECONDS = 2592000; // Approximately 30 days (30 * 24 * 3600)
+        const TEN_YEARS_SECONDS = 315360000; // Approximately 10 years (10 * 365.25 * 24 * 3600)
+
+        // Determine the maximum possible strength score based solely on crack time.
+        // The checks are ordered from longest crack time to shortest.
+        if (crackTimeSeconds >= TEN_YEARS_SECONDS) {
+            strengthScoreBasedOnTime = 4; // Can be Very Strong
+        } else if (crackTimeSeconds >= ONE_MONTH_SECONDS) {
+            strengthScoreBasedOnTime = 3; // Can be Strong
+        } else if (crackTimeSeconds >= ONE_HOUR_SECONDS) {
+            strengthScoreBasedOnTime = 2; // Can be Moderate
+        } else if (crackTimeSeconds >= ONE_MINUTE_SECONDS) {
+            strengthScoreBasedOnTime = 1; // Can be Weak
+        } else { 
+            // If crackTimeSeconds is less than ONE_MINUTE_SECONDS
+            strengthScoreBasedOnTime = 0; // Very Weak
+        }
+
+        // The final score is the minimum of zxcvbn's score and our time-based score.
+        // This ensures that a password isn't rated higher than its weakest characteristic (either complexity or crack time).
+        return Math.min(zxcvbnScore, strengthScoreBasedOnTime);
+    }
+
     // Toggle password visibility between hidden and visible
     togglePassword.addEventListener('click', () => {
         const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
@@ -39,147 +72,121 @@ document.addEventListener('DOMContentLoaded', () => {
     // This helps prevent dictionary attacks and common password patterns
     function isPasswordTooCommon(password) {
         const result = zxcvbn(password);
-        // Consider passwords weak if they score low or can be cracked quickly
-        return result.score < 2 || 
-               result.crack_times_display.offline_fast_hashing_1e10_per_second.includes('instant') ||
-               result.crack_times_display.offline_fast_hashing_1e10_per_second.includes('seconds') ||
-               result.crack_times_display.offline_fast_hashing_1e10_per_second.includes('minutes') ||
-               result.crack_times_display.offline_fast_hashing_1e10_per_second.includes('hours');
+        const crackTimeSeconds = result.crack_times_seconds.offline_fast_hashing_1e10_per_second;
+        // Consider passwords weak if they score low or can be cracked quickly (less than 1 day)
+        return result.score < 2 || crackTimeSeconds < 86400;
     }
 
     // Verify if password has sufficient crack time (at least a decade)
     // This ensures passwords are resistant to brute force attacks
     function hasSufficientCrackTime(password) {
         const result = zxcvbn(password);
-        const crackTime = result.crack_times_display.offline_fast_hashing_1e10_per_second;
-        return crackTime.includes('centuries') || 
-               crackTime.includes('decades') || 
-               (crackTime.includes('years') && parseInt(crackTime) >= 10);
+        const crackTimeSeconds = result.crack_times_seconds.offline_fast_hashing_1e10_per_second;
+        // A decade is 10 years, which is approximately 315,360,000 seconds
+        return crackTimeSeconds >= 315360000;
     }
 
     // Enhance a moderate password to make it significantly stronger
     // Uses multiple techniques to increase entropy and complexity
+    // This function now guarantees to return an enhanced string based on the input,
+    // and its actual strength will be assessed by calculateActualStrength afterwards.
     function enhanceModeratePassword(password) {
-        // Try multiple variations to find a strong enough password
-        // This helps avoid patterns that might be predictable
-        for (let attempt = 0; attempt < 5; attempt++) {
-            let enhancedPassword = password;
-            
-            // Define character sets for password enhancement
-            const specialChars = '!@#$%^&*';
-            const numbers = '0123456789';
-            
-            // Add three special characters at random positions
-            // This increases entropy and makes the password harder to guess
-            for (let i = 0; i < 3; i++) {
-                const specialChar = specialChars[Math.floor(Math.random() * specialChars.length)];
-                const insertPos = Math.floor(Math.random() * (enhancedPassword.length + 1));
-                enhancedPassword = enhancedPassword.slice(0, insertPos) + specialChar + enhancedPassword.slice(insertPos);
-            }
-            
-            // Add three numbers at random positions
-            // This adds complexity and makes the password more resistant to dictionary attacks
-            for (let i = 0; i < 3; i++) {
-                const number = numbers[Math.floor(Math.random() * numbers.length)];
-                const numInsertPos = Math.floor(Math.random() * (enhancedPassword.length + 1));
-                enhancedPassword = enhancedPassword.slice(0, numInsertPos) + number + enhancedPassword.slice(numInsertPos);
-            }
-            
-            // Ensure password starts with uppercase for additional complexity
-            if (!validationRules.uppercase.test(enhancedPassword[0])) {
-                enhancedPassword = enhancedPassword[0].toUpperCase() + enhancedPassword.slice(1);
-            }
-            
-            // Extend password length to at least 20 characters
-            // Longer passwords are exponentially harder to crack
-            while (enhancedPassword.length < 20) {
-                const randomChar = Math.random().toString(36).slice(-1);
-                enhancedPassword += randomChar;
-            }
+        let enhancedPassword = password;
 
-            // Verify this version meets our security requirements
-            if (hasSufficientCrackTime(enhancedPassword)) {
-                return enhancedPassword;
-            }
+        // Define character sets for password enhancement
+        const specialChars = '!@#$%^&*';
+        const numbers = '0123456789';
+
+        // Add three special characters at random positions
+        // This increases entropy and makes the password harder to guess
+        for (let i = 0; i < 3; i++) {
+            const specialChar = specialChars[Math.floor(Math.random() * specialChars.length)];
+            const insertPos = Math.floor(Math.random() * (enhancedPassword.length + 1));
+            enhancedPassword = enhancedPassword.slice(0, insertPos) + specialChar + enhancedPassword.slice(insertPos);
         }
 
-        // Return null if we couldn't create a strong enough password
-        // This prevents suggesting weak variations
-        return null;
+        // Add three numbers at random positions
+        // This adds complexity and makes the password more resistant to dictionary attacks
+        for (let i = 0; i < 3; i++) {
+            const number = numbers[Math.floor(Math.random() * numbers.length)];
+            const numInsertPos = Math.floor(Math.random() * (enhancedPassword.length + 1));
+            enhancedPassword = enhancedPassword.slice(0, numInsertPos) + number + enhancedPassword.slice(numInsertPos);
+        }
+
+        // Ensure password starts with uppercase for additional complexity
+        if (!validationRules.uppercase.test(enhancedPassword[0])) {
+            enhancedPassword = enhancedPassword[0].toUpperCase() + enhancedPassword.slice(1);
+        }
+
+        // Extend password length to at least 20 characters
+        // Longer passwords are exponentially harder to crack
+        while (enhancedPassword.length < 20) {
+            const randomChar = Math.random().toString(36).slice(-1);
+            enhancedPassword += randomChar;
+        }
+
+        return enhancedPassword;
     }
 
     // Generate a stronger version of the current password
-    // Only suggests improvements for moderate passwords to avoid unnecessary complexity
+    // Always attempts to enhance weak to moderate passwords, and the actual strength
+    // of the generated password is then assessed and displayed.
     function generateSimilarPassword(originalPassword) {
         if (!originalPassword) return '';
 
         const result = zxcvbn(originalPassword);
-        
-        // Don't suggest improvements for weak passwords
-        // This prevents creating variations of already weak passwords
-        if (isPasswordTooCommon(originalPassword)) {
-            return null;
-        }
-        
-        // Only enhance moderate passwords
-        // Strong passwords don't need enhancement
-        if (result.score === 2) {
-            const enhancedPassword = enhanceModeratePassword(originalPassword);
-            if (enhancedPassword && hasSufficientCrackTime(enhancedPassword)) {
-                return enhancedPassword;
-            }
-            return null;
-        }
-        
-        // Don't suggest changes for already strong passwords
-        // This prevents unnecessary complexity
-        if (result.score >= 3) {
-            return null;
+        const actualScore = calculateActualStrength(result);
+
+        // If the password is already strong (score 3 or 4), no need to suggest a new one.
+        // This prevents unnecessary complexity when the password is already secure.
+        if (actualScore >= 3) {
+            return null; // Return null to indicate no suggestion is needed/possible
         }
 
-        return null;
+        // For Very Weak (score 0), Weak (score 1), and Moderate (score 2) passwords,
+        // always attempt to enhance them to a stronger version.
+        // The strength of the generated password will be evaluated and displayed
+        // by updatePasswordStrength.
+        const enhancedPassword = enhanceModeratePassword(originalPassword);
+        return enhancedPassword; // Always return the enhanced string
     }
 
     // Handle password suggestion button clicks
-    // Provides appropriate feedback based on password strength
+    // Provides appropriate feedback based on password strength and suggestion outcome
     suggestPasswordBtn.addEventListener('click', () => {
         const currentPassword = passwordInput.value;
         if (currentPassword) {
-            const suggestedPassword = generateSimilarPassword(currentPassword);
-            
-            if (suggestedPassword === null) {
-                const result = zxcvbn(currentPassword);
-                if (result.score < 2) {
-                    // Provide guidance for weak passwords
-                    warnings.textContent = "This password is too common or weak. Please choose a different base password that's not in common dictionaries.";
-                    suggestions.innerHTML = `
-                        <li>Avoid common words, names, or patterns</li>
-                        <li>Use a unique combination of words that aren't related</li>
-                        <li>Consider using a passphrase instead of a single word</li>
-                        <li>Mix different languages or add random characters</li>
-                    `;
-                } else if (result.score >= 3) {
-                    // Acknowledge strong passwords
-                    warnings.textContent = "Your password is already strong! No suggestions needed.";
-                    suggestions.innerHTML = `
-                        <li>Keep using this strong password</li>
-                        <li>Make sure to use different strong passwords for different accounts</li>
-                    `;
-                } else {
-                    // Guide users when enhancement isn't possible
-                    warnings.textContent = "Unable to create a stronger version of this password. Please try a different base password.";
-                    suggestions.innerHTML = `
-                        <li>Try using a longer base password</li>
-                        <li>Use a combination of unrelated words</li>
-                        <li>Consider using a passphrase with special characters</li>
-                    `;
-                }
+            const result = zxcvbn(currentPassword); // Get initial result for current password
+            const actualScore = calculateActualStrength(result); // Get initial actual score
+
+            // If the current password is already strong, no suggestion is needed/possible
+            if (actualScore >= 3) {
+                warnings.textContent = "Your password is already strong! No suggestions needed.";
+                suggestions.innerHTML = `
+                    <li>Keep using this strong password</li>
+                    <li>Make sure to use different strong passwords for different accounts</li>
+                `;
                 return;
             }
 
-            // Update the input with the enhanced password
-            passwordInput.value = suggestedPassword;
-            updatePasswordStrength(suggestedPassword);
+            // Attempt to generate a similar, stronger password
+            const suggestedPassword = generateSimilarPassword(currentPassword);
+
+            // If a suggestion was successfully generated, update the input and UI
+            if (suggestedPassword) { // Check for truthiness instead of === null
+                passwordInput.value = suggestedPassword;
+                updatePasswordStrength(suggestedPassword); // This will re-evaluate and display warnings if the SUGGESTED password is still not decade-long
+            } else {
+                // This block is only hit if generateSimilarPassword explicitly returned null,
+                // which now only happens if the original password was already strong.
+                // However, as a fallback, we can add this for clarity if logic changes.
+                warnings.textContent = "Unable to create a suitable stronger version. Please try a different base password.";
+                suggestions.innerHTML = `
+                    <li>Try using a longer base password</li>
+                    <li>Use a combination of unrelated words</li>
+                    <li>Consider using a passphrase with special characters</li>
+                `;
+            }
         }
     });
 
@@ -188,10 +195,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function getValidationFeedback(password) {
         const feedback = [];
         const result = zxcvbn(password);
+        const actualScore = calculateActualStrength(result);
         
         // Only show basic validation feedback for weak passwords
         // This prevents cluttering the interface for strong passwords
-        if (result.score < 2) {
+        if (actualScore < 2) {
             if (!validationRules.uppercase.test(password)) {
                 feedback.push('Add at least one uppercase letter');
             }
@@ -222,9 +230,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Provides real-time feedback as the user types
     function updatePasswordStrength(password) {
         const result = zxcvbn(password);
+        console.log("zxcvbn result for '" + password + "':", result);
+        const actualScore = calculateActualStrength(result);
         
         // Update visual strength indicator
-        const config = strengthConfig[result.score];
+        const config = strengthConfig[actualScore];
         strengthBar.style.backgroundColor = config.color;
         strengthBar.style.width = config.width;
         strengthLabel.textContent = config.label;
