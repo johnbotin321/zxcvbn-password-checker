@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Strength Checker</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Password Strength Checker</h1>
+        
+        <div class="password-input-container">
+            <input type="password" id="passwordInput" placeholder="Enter your password">
+            <button id="togglePassword" class="toggle-password">
+                <i class="fas fa-eye"></i>
+            </button>
+        </div>
+        <button id="suggestPassword" class="suggest-password-btn">
+            <i class="fas fa-lightbulb"></i> Suggest Similar Password
+        </button>
+
+        <div class="strength-meter">
+            <div class="strength-bar">
+                <div id="strengthBar" class="strength-progress"></div>
+            </div>
+            <span id="strengthLabel" class="strength-label">Very Weak</span>
+        </div>
+
+        <div class="feedback-container">
+            <div class="feedback-item">
+                <h3>Time to Crack</h3>
+                <p id="crackTime">-</p>
+            </div>
+            <div class="feedback-item">
+                <h3>Warnings</h3>
+                <p id="warnings">-</p>
+            </div>
+            <div class="feedback-item">
+                <h3>Suggestions</h3>
+                <ul id="suggestions"></ul>
+            </div>
+        </div>
+
+        <div class="security-notice">
+            <i class="fas fa-lock"></i>
+            <p>All password checks are performed locally in your browser. No data is ever stored or transmitted.</p>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html> 
